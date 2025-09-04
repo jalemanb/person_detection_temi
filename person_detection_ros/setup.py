@@ -30,6 +30,9 @@ setup(
         'console_scripts': [
             'person_detection_node = person_detection_ros.person_detection_node:main',
             'eval = person_detection_ros.eval:main',
+            'ablation = person_detection_ros.ablation:main',
+            'video = person_detection_ros.attention_video:main',
+
         ],
     },
 )

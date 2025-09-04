@@ -39,6 +39,8 @@ class SOD:
                  mb_threshold = 6.0, 
                  use_mb = True,
                  # Memory Manager Params
+                 use_memory = True,
+                 use_pseudo = True,
                  max_samples = 100,
                  sim_thresh = 0.75, 
                  feature_dim = 512, 
@@ -110,6 +112,7 @@ class SOD:
         self.target_feats = None
         self.reid_counter = 0
         self.reid_count_thr = reid_count_thr
+        self.reid_inference_result = 0.
         self.blacklist = set()
         self.use_experimental_tracker = use_experimental_tracker
         ############################
@@ -130,8 +133,10 @@ class SOD:
                                     sim_thresh = sim_thresh, # If Small aways preserve the newest features
                                     feature_dim = feature_dim, 
                                     num_parts = num_parts,
+                                    use_pseudo = use_pseudo,
                                     pseudo_std = pseudo_std,
                                     beta=beta)
+        self.use_memory = use_memory
         ##############################################
 
         # Intel Realsense Values
@@ -148,7 +153,7 @@ class SOD:
         self.blacklist.clear()
         self.memory.reset()
 
-        self.experimental_tracker.reset_counter()
+        # self.experimental_tracker.reset_counter()
 
         # Reset all the reidentifying mechanism weights to train from scratch whn apropiate
         for layer in self.transformer_classifier.modules():
@@ -169,13 +174,8 @@ class SOD:
                 layer.reset_parameters()
 
 
-    def detect(
-            self, 
-            img_rgb, 
-            img_depth,
-            camera_params=[1.0, 1.0, 1.0, 1.0], 
-            detection_class=0
-    ):
+
+    def detect_and_track(self, img_rgb, img_depth, camera_params, detection_class):
         # Get Image Dimensions (Assumes noisy message wth varying image size) 
         img_h = img_rgb.shape[0]
         img_w = img_rgb.shape[1]    
@@ -214,7 +214,6 @@ class SOD:
 
             # YOLO Detection Results
             if self.use_experimental_tracker:
-                print("USING SORT IN STEREOIDs")
 
                 detections_imgs, detection_kpts, bboxes, poses, _, original_kpts = detections
 
@@ -240,7 +239,6 @@ class SOD:
                     detections_imgs = detections_imgs.to(device=self.device)
                     detection_kpts = detection_kpts.to(device=self.device)
             else:
-                print("USING BYTETRACK")
 
                 detections_imgs, detection_kpts, bboxes, poses, track_ids, original_kpts = detections
                 detections_imgs = detections_imgs.to(device=self.device)
@@ -252,6 +250,25 @@ class SOD:
             if self.target_id is not None and self.target_id in track_ids:
                 self.blacklist.update(tid for tid in track_ids if tid != self.target_id)
                 self.blacklist.intersection_update(track_ids)
+
+            
+            return (detections_imgs, detection_kpts, bboxes, poses, track_ids, original_kpts)
+
+
+    def detect(
+            self, 
+            img_rgb, 
+            img_depth,
+            camera_params=[1.0, 1.0, 1.0, 1.0], 
+            detection_class=0
+    ):
+            
+            results = self.detect_and_track(img_rgb, img_depth, camera_params, detection_class)
+
+            if results is None:
+                return None
+                
+            detections_imgs, detection_kpts, bboxes, poses, track_ids, original_kpts = results
 
             # If no detection (No human) then stay on reid mode and return Nothing
             if self.target_id is not None and self.target_id not in track_ids:
@@ -404,8 +421,7 @@ class SOD:
                 self.extract_feats_target = True
 
         is_positive = idx_to_extract == target_id_idx
-
-        text = "TARGET" if is_positive else f"DISTRACTOR id: {distractor_id_}" 
+        # print("Sample:", is_positive)
 
         return idx_to_extract, is_positive
 
@@ -428,14 +444,21 @@ class SOD:
                 # Extract the features of the chosen index
                 feats = self.feature_extraction(detections_imgs[[idx_to_extract]], detection_kpts[[idx_to_extract]])
 
-                # Save Latest Extracted feature into memory
-                if is_positive:
-                    self.memory.insert_positive(feats)
-                else:
-                    self.memory.insert_negative(feats)
 
-                # Get a sample based on the memory manager policy
-                mem_feats, mem_vis, label, is_pseudo = self.memory.get_sample(use_pseudo=False)
+                # Use the memory manager
+                if self.use_memory:
+                    # Save Latest Extracted feature into memory
+                    if is_positive:
+                        self.memory.insert_positive(feats)
+                    else:
+                        self.memory.insert_negative(feats)
+
+                    # Get a sample based on the memory manager policy
+                    mem_feats, mem_vis, label, is_pseudo = self.memory.get_sample()
+
+                else:
+                    # Retrain with the Latest Available Data
+                    mem_feats, mem_vis, label, is_pseudo = feats[0], feats[1], torch.tensor([[1]], dtype=torch.float32)*is_positive, False
 
                 # Move everything into device
                 mem_feats = mem_feats.to(self.device)
@@ -466,6 +489,73 @@ class SOD:
             self.logger.info(f"train: {train_time:.6f}")
         finally:
             self.reid_lock.release()
+
+
+    def updating_reid_ablation(self, detections_imgs, detection_kpts, tracked_ids, return_mask = False):
+
+        # Get the index belonging to the target id
+        target_id_idx = np.where(tracked_ids == self.target_id)[0]
+
+        # From who to extract features?
+        # This approach constraints the feature extraction to be of Batch one, avoiding memory overflow or high computation code
+        # Extract features from 5 people in the image? 5 continuous frames needed
+        idx_to_extract, is_positive = self.grab_single_sample(target_id_idx, tracked_ids)
+
+        # Extract the features of the chosen index
+
+        # Use the memory manager
+        if self.use_memory:
+
+            feats = self.feature_extraction(detections_imgs[[idx_to_extract]], detection_kpts[[idx_to_extract]])
+
+            # Save Latest Extracted feature into memory
+            if is_positive:
+                self.memory.insert_positive(feats)
+            else:
+                self.memory.insert_negative(feats)
+
+            # Get a sample based on the memory manager policy
+            mem_feats, mem_vis, label, is_pseudo = self.memory.get_sample()
+
+        else:
+            feats = self.feature_extraction(detections_imgs, detection_kpts)
+
+            labels = torch.zeros(feats[0].shape[0])
+            labels[target_id_idx] = True
+
+            # Retrain with the Latest Available Data
+            mem_feats, mem_vis, label, is_pseudo = feats[0], feats[1], labels, False
+
+        # Move everything into device
+        mem_feats = mem_feats.to(self.device)
+        mem_vis = mem_vis.to(self.device)
+        label = label.to(self.device)
+
+        #############################################################################################################
+        # Online Continual Learning #################################################################################
+
+        self.transformer_classifier.train()
+
+        attentions = None
+
+        if return_mask:
+            logits, attentions = self.transformer_classifier(mem_feats, mem_vis, return_mask = return_mask)
+        else:
+            logits = self.transformer_classifier(mem_feats, mem_vis, return_mask = return_mask)
+
+
+        print("LOGITS", torch.sigmoid(logits).detach().cpu().numpy(), is_pseudo)
+
+        loss = self.classifier_criterion(logits.flatten(), label.flatten())
+        self.classifier_optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.transformer_classifier.parameters(), max_norm=0.5)
+        self.classifier_optimizer.step()  
+        # Online Continual Learning #################################################################################
+        #############################################################################################################
+        return torch.sigmoid(logits).detach().cpu().numpy(), torch.stack(attentions, dim=0).detach().cpu().numpy()
+
+
 
     def reidentification(self, detections_imgs, detection_kpts, tracked_ids):
         if not self.reid_lock.acquire(blocking=False):
@@ -500,6 +590,8 @@ class SOD:
 
                     class_idx = np.argmax(result[:, 0])
 
+                    self.reid_inference_result = result[class_idx, 0]
+
                     if result[class_idx, 0] > np.floor(self.class_prediction_thr*10)/10:
 
                         self.reid_counter += 1
@@ -519,6 +611,46 @@ class SOD:
             self.logger.info(f"reid: {reid_time:.6f}")
         finally:
             self.reid_lock.release()
+
+
+    def reidentification_ablation(self, detections_imgs, detection_kpts, tracked_ids = None, return_mask = False):
+
+        with torch.inference_mode():
+
+            self.transformer_classifier.eval()
+
+            if tracked_ids is not None:
+                    
+                    # Filter out blacklisted IDs
+                    valid_indices = [i for i, tid in enumerate(tracked_ids) if tid not in self.blacklist]
+
+                    if not valid_indices:
+                        print("No valid IDs to reidentify (all blacklisted).")
+                        return None
+                    
+                    tracked_ids = np.array(tracked_ids)[valid_indices].tolist()
+                
+                    # Consider trying to reid one at a time
+
+                    f_, v_ = self.feature_extraction(detections_imgs[valid_indices], detection_kpts[valid_indices])
+
+                    if return_mask:
+                        logits, attentions = self.transformer_classifier(f_, v_, return_mask = return_mask)
+                        return logits,  torch.stack(attentions, dim=0).detach().cpu().numpy()
+
+                    else:
+                        logits = self.transformer_classifier(f_, v_, return_mask = return_mask)
+                        return logits
+            else:
+    
+                f_, v_ = self.feature_extraction(detections_imgs, detection_kpts)
+
+                if return_mask:
+                    logits, attentions = self.transformer_classifier(f_, v_, return_mask = return_mask)
+                    return logits,  torch.stack(attentions, dim=0).detach().cpu().numpy()
+                else:
+                    logits = self.transformer_classifier(f_, v_, return_mask = return_mask)
+                    return logits
 
     def feature_extraction(self, detections_imgs, detection_kpts):
         # Extract features for similarity check

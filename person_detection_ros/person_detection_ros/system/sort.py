@@ -238,14 +238,14 @@ def associate_detections_to_trackers(detections, trackers, kfs, iou_threshold = 
 
   iou_matrix = iou_batch(detections, trackers)\
   
-  print("IOU matrix")
-  print(iou_matrix)
+#   print("IOU matrix")
+#   print(iou_matrix)
 
   if use_mb:
     mb_matrix = squared_mahalonobis_distance(detections, kfs)
     # Add the Mahalanobies Distances in Here
-    print("MB matrix")
-    print(mb_matrix)
+    # print("MB matrix")
+    # print(mb_matrix)
   else:
     mb_matrix = iou_matrix
 
@@ -268,7 +268,7 @@ def associate_detections_to_trackers(detections, trackers, kfs, iou_threshold = 
     #     matched_indices = np.empty(shape=(0,2))
     else:
         if use_mb:
-            matched_indices = linear_assignment(-0*iou_matrix + mb_matrix)
+            matched_indices = linear_assignment(-iou_matrix + mb_matrix)
         else:
             matched_indices = linear_assignment(-iou_matrix)
   else:

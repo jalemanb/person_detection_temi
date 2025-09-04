@@ -133,20 +133,20 @@ class HumanPoseEstimationNode(Node):
         self.depth_sub = Subscriber(
             self, 
             CompressedImage, 
-            '/ranger/camera/camera_front/aligned_depth_to_color/image_raw/compressed',
-            # '/camera/camera/aligned_depth_to_color/image_raw/compressed',
+            # '/ranger/camera/camera_front/aligned_depth_to_color/image_raw/compressed',
+            '/camera/camera/aligned_depth_to_color/image_raw/compressed',
             qos_profile=sensor_fast_qos)
         self.rgb_sub = Subscriber(
             self, 
             CompressedImage, 
-            '/ranger/camera/camera_front/color/image_raw/compressed',
-            # '/camera/camera/color/image_raw/compressed',
+            # '/ranger/camera/camera_front/color/image_raw/compressed',
+            '/camera/camera/color/image_raw/compressed',
             qos_profile=sensor_fast_qos)
         self.info_sub = Subscriber(
             self, 
             CameraInfo, 
-            '/ranger/camera/camera_front/color/camera_info',
-            # '/camera/camera/color/camera_info',
+            # '/ranger/camera/camera_front/color/camera_info',
+            '/camera/camera/color/camera_info',
             qos_profile=sensor_fast_qos)
 
         # ApproximateTimeSynchronizer allows small timestamp mismatch

@@ -97,10 +97,10 @@ class HumanPoseEstimationNode(Node):
             yolo_model_path = yolo_path, 
             feature_extracture_cfg_path = feature_extracture_cfg_path, 
             tracker_system_path=bytetrack_path,
-            yolo_detection_thr = 0.3,
+            yolo_detection_thr = 0.5,
             use_experimental_tracker = True,
             use_mb=True,
-            max_age = 2,
+            max_age = 3,
             min_hits = 3, 
             iou_threshold = 0.2, 
             mb_threshold = 6.0, 
@@ -108,6 +108,9 @@ class HumanPoseEstimationNode(Node):
 
         self.model.to(device)
         self.get_logger().info('Deep Learning Model Armed')
+
+        self.model.logger.disabled = True
+
 
         # Warmup inference (GPU can be slow in the first inference)
         self.model.detect(
@@ -133,20 +136,17 @@ class HumanPoseEstimationNode(Node):
         self.depth_sub = Subscriber(
             self, 
             CompressedImage, 
-            # '/ranger/camera/camera_front/aligned_depth_to_color/image_raw/compressed',
-            '/camera/camera/aligned_depth_to_color/image_raw/compressed',
+            '/ranger/camera/camera_front/aligned_depth_to_color/image_raw/compressed',
             qos_profile=sensor_fast_qos)
         self.rgb_sub = Subscriber(
             self, 
             CompressedImage, 
-            # '/ranger/camera/camera_front/color/image_raw/compressed',
-            '/camera/camera/color/image_raw/compressed',
+            '/ranger/camera/camera_front/color/image_raw/compressed',
             qos_profile=sensor_fast_qos)
         self.info_sub = Subscriber(
             self, 
             CameraInfo, 
-            # '/ranger/camera/camera_front/color/camera_info',
-            '/camera/camera/color/camera_info',
+            '/ranger/camera/camera_front/color/camera_info',
             qos_profile=sensor_fast_qos)
 
         # ApproximateTimeSynchronizer allows small timestamp mismatch
@@ -277,25 +277,23 @@ class HumanPoseEstimationNode(Node):
                 # Invalid detections go red
                 cv2.rectangle(rgb_img, (x1, y1), (x2, y2), (0, 0, 255), thickness)
 
-                print("TARGET ID:", target_id)
-
                 # overlay the Target person, this is to be considered later on
                 if target_id is not None and tracked_ids[i] == target_id:
                     alpha = 0.2
-                    overlay = rgb_img.copy()
-                    cv2.rectangle(rgb_img, (x1, y1), (x2, y2), (0, 255, 0), -1)
-                    cv2.addWeighted(overlay, alpha, rgb_img, 1 - alpha, 0, rgb_img)
+                    # overlay = rgb_img.copy()
+                    cv2.rectangle(rgb_img, (x1, y1), (x2, y2), (0, 255, 0), thickness)
+                    # cv2.addWeighted(overlay, alpha, rgb_img, 1 - alpha, 0, rgb_img)
 
                 # Just for debugging
                 cv2.putText(rgb_img, f"ID: {tracked_ids[i]}" , (x1 + int((x2-x1)/2), y1 + int((y2-y1)/2)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
                 # Draw the keypoints they have to be with respect the original image dimensions
-                kpt = kpts[i]
-                for j in range(kpt.shape[0]):
-                    if kpt[j, 2] > 0.5:
-                        u = int(kpt[j, 0])
-                        v = int(kpt[j, 1])
-                        cv2.circle(rgb_img, (u, v), radius_kpts, color_kpts, thickness)
+                # kpt = kpts[i]
+                # for j in range(kpt.shape[0]):
+                #     if kpt[j, 2] > 0.5:
+                #         u = int(kpt[j, 0])
+                #         v = int(kpt[j, 1])
+                #         cv2.circle(rgb_img, (u, v), radius_kpts, color_kpts, thickness)
 
         if compressed:
             self.publisher_debug_detection_image_compressed.publish(self.cv_bridge.cv2_to_compressed_imgmsg(rgb_img))

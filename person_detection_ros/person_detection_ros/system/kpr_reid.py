@@ -62,7 +62,6 @@ class KPR(object):
 
         cfg = build_config(config_path=cfg_file, model_weights=os.path.join(os.path.dirname(cfg_file), "kpr_market_IN_89.58_95.87_41898449.pth.tar"))
 
-        print("HOHOHO", cfg.model.load_weights)
         self.cfg = cfg
         self.kpt_conf = kpt_conf
         self.device = device

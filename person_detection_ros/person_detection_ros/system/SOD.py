@@ -11,7 +11,6 @@ import threading
 import shutil
 
 from person_detection_ros.system.kpr_reid import KPR as KPR_torch
-from person_detection_ros.system.kpr_reid_onnx import KPR as KPR_onnx
 from person_detection_ros.system.utils import kp_img_to_kp_bbox, rescale_keypoints, iou_vectorized, compute_center_distances
 from person_detection_ros.system.memory_manager import MemoryManager
 from person_detection_ros.system.sort import Sort

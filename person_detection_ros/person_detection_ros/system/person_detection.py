@@ -76,8 +76,7 @@ class HumanPoseEstimationNode(Node):
         # Setting up model paths (YOLO for object detection and segmentation, and orientation estimation model)
         pkg_shared_dir = get_package_share_directory('person_detection_ros')
 
-        # yolo_models = ['yolo11n-pose.engine','yolo11n-pose.pt']
-        yolo_models = ['yolo11n-pose.pt']
+        yolo_models = ['yolo11n-pose.engine','yolo11n-pose.pt']
         yolo_model = None
 
         for model_file in yolo_models:

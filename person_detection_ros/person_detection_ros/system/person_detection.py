@@ -21,7 +21,7 @@ from std_srvs.srv import Trigger
 
 class HumanPoseEstimationNode(Node):
     def __init__(self):
-        super().__init__('pose_estimation_node')
+        super().__init__('person_detection_node')
 
         sensor_fast_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,  # no retries (lower latency)
@@ -33,27 +33,27 @@ class HumanPoseEstimationNode(Node):
         # Create publishers
         self.human_image_detection_pub = self.create_publisher(
             CandidateArray, 
-            '/image_detections', 
+            'image_detections', 
             1
         )
         self.human_cartesian_detection_pub = self.create_publisher(
             PoseArray, 
-            '/cartesian_detections_local', 
+            'cartesian_detections_local', 
             1
         )
         self.target_human_cartesian_detection_pub = self.create_publisher(
             PoseArray, 
-            '/target_cartesian_detection_local', 
+            'target_cartesian_detection_local', 
             1
         )
         self.publisher_debug_detection_image_compressed = self.create_publisher(
             CompressedImage, 
-            '/human_detection/img_compressed', 
+            'human_detection/img_compressed', 
             1
         )
         self.publisher_debug_detection_image = self.create_publisher(
             Image, 
-            '/human_detection/img_raw', 
+            'human_detection/img_raw', 
             1
         )
 

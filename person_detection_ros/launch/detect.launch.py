@@ -54,6 +54,8 @@ def generate_launch_description():
             output='screen',
             arguments=['-d', rviz_config_file],
             parameters=[{'use_sim_time': use_sim_time}],
-            condition=IfCondition(use_rviz)
+            condition=IfCondition(use_rviz),
+            remappings=[("/tf", ["/", namespace, "/tf"]),
+                        ("/tf_static", ["/", namespace, "/tf_static"]),],
         ),
     ])
